@@ -1,5 +1,4 @@
 #include "Arduino.h"
-#include "ESPAsyncWebServer.h"
 
 class Relay {
   private:
@@ -18,6 +17,6 @@ class Relay {
     String getName();
     void setName(String name);
     String getHtml();
-    void handle_on(AsyncWebServerRequest *request);
-    void handle_off(AsyncWebServerRequest *request);
+    // void handle_on(AsyncWebServerRequest *request);
+    // void handle_off(AsyncWebServerRequest *request);
 };

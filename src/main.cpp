@@ -1,17 +1,16 @@
 #include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
-#include <MyAsyncWebServer.h>
 #include <Relay.h>
 
-void handle_relay1On(AsyncWebServerRequest *request);
-void handle_relay2On(AsyncWebServerRequest *request);
-void handle_relay3On(AsyncWebServerRequest *request);
-void handle_relay4On(AsyncWebServerRequest *request);
-void handle_relay1Off(AsyncWebServerRequest *request);
-void handle_relay2Off(AsyncWebServerRequest *request);
-void handle_relay3Off(AsyncWebServerRequest *request);
-void handle_relay4Off(AsyncWebServerRequest *request);
-void handle_OnConnect(AsyncWebServerRequest *request);
-void handle_NotFound(AsyncWebServerRequest *request);
+// void handle_relay1On(AsyncWebServerRequest *request);
+// void handle_relay2On(AsyncWebServerRequest *request);
+// void handle_relay3On(AsyncWebServerRequest *request);
+// void handle_relay4On(AsyncWebServerRequest *request);
+// void handle_relay1Off(AsyncWebServerRequest *request);
+// void handle_relay2Off(AsyncWebServerRequest *request);
+// void handle_relay3Off(AsyncWebServerRequest *request);
+// void handle_relay4Off(AsyncWebServerRequest *request);
+// void handle_OnConnect(AsyncWebServerRequest *request);
+// void handle_NotFound(AsyncWebServerRequest *request);
 String generateHtml();
 
 static Relay relay1(1, 1);
@@ -22,10 +21,41 @@ static Relay relay4(4, 4);
 const char *ap_password = "Pa3s#Tz!a";
 const char *device_hostname = "relays";
 
-MyAsyncWebServer server(80);
+// Include certificate data
+// use lib/generateCa.sh to generate
+#include "cert.h"
+#include "private_key.h"
 
-void setup()
-{
+// Includes for the server
+#include <HTTPSServer.hpp>
+#include <SSLCert.hpp>
+#include <HTTPRequest.hpp>
+#include <HTTPResponse.hpp>
+
+// The HTTPS Server comes in a separate namespace. For easier use, include it here.
+using namespace httpsserver;
+
+// MyAsyncWebServer server(80);
+
+// Create an SSL certificate object from the files included above
+SSLCert cert = SSLCert(
+  myCert_crt_DER, myCert_crt_DER_len,
+  myCert_key_DER, myCert_key_DER_len
+);
+
+// Create an SSL-enabled server that uses the certificate
+// The contstructor takes some more parameters, but we go for default values here.
+HTTPSServer secureServer = HTTPSServer(&cert);
+
+// Declare some handler functions for the various URLs on the server
+// The signature is always the same for those functions. They get two parameters,
+// which are pointers to the request data (read request body, headers, ...) and
+// to the response data (write response, set status code, ...)
+void handleRoot(HTTPRequest * req, HTTPResponse * res);
+void handleFavicon(HTTPRequest * req, HTTPResponse * res);
+void handle404(HTTPRequest * req, HTTPResponse * res);
+
+void setup() {
     // put your setup code here, to run once:
     Serial.begin(9600);
 
@@ -50,90 +80,71 @@ void setup()
         Serial.println("connected...yeey :)");
     }
 
-    server.on("/", HTTP_GET, handle_OnConnect);
-    server.on("/relay1on", HTTP_GET, handle_relay1On);
-    server.on("/relay1off", HTTP_GET, handle_relay1Off);
-    server.on("/relay2on", HTTP_GET, handle_relay2On);
-    server.on("/relay2off", HTTP_GET, handle_relay2Off);
-    server.on("/relay3on", HTTP_GET, handle_relay3On);
-    server.on("/relay3off", HTTP_GET, handle_relay3Off);
-    server.on("/relay4on", HTTP_GET, handle_relay4On);
-    server.on("/relay4off", HTTP_GET, handle_relay4Off);
-    server.onNotFound(handle_NotFound);
+    // For every resource available on the server, we need to create a ResourceNode
+    // The ResourceNode links URL and HTTP method to a handler function
+    ResourceNode * nodeRoot    = new ResourceNode("/", "GET", &handleRoot);
+    ResourceNode * node404     = new ResourceNode("", "GET", &handle404);
 
-    // Start the server
-    server.begin();
+    // Add the root node to the server
+    secureServer.registerNode(nodeRoot);
 
-    // Check if server started successfully
-    if (server.getStatus() != 1)
-    {
-        Serial.println("Failed to start HTTP server !!!");
-        Serial.println("Restarting...");
-        ESP.restart();
+    // Add the 404 not found node to the server.
+    // The path is ignored for the default node.
+    secureServer.setDefaultNode(node404);
+
+    Serial.println("Starting server...");
+    secureServer.start();
+    if (secureServer.isRunning()) {
+        Serial.println("Server ready.");
     }
 }
 
-void loop()
-{
-    //   if(LED1status)
-    //   {digitalWrite(LED1pin, HIGH);}
-    //   else
-    //   {digitalWrite(LED1pin, LOW);}
+void loop() {
+  // This call will let the server do its work
+  secureServer.loop();
 
-    //   if(LED2status)
-    //   {digitalWrite(LED2pin, HIGH);}
-    //   else
-    //   {digitalWrite(LED2pin, LOW);}
+  // Other code would go here...
+  delay(1);
 }
 
-void handle_OnConnect(AsyncWebServerRequest *request)
-{
-    request->send(200, "text/html", generateHtml());
+void handleRoot(HTTPRequest * req, HTTPResponse * res) {
+  // Status code is 200 OK by default.
+  // We want to deliver a simple HTML page, so we send a corresponding content type:
+  res->setHeader("Content-Type", "text/html");
+
+  // The response implements the Print interface, so you can use it just like
+  // you would write to Serial etc.
+  res->println("<!DOCTYPE html>");
+  res->println("<html>");
+  res->println("<head><title>Hello World!</title></head>");
+  res->println("<body>");
+  res->println("<h1>Hello World!</h1>");
+  res->print("<p>Your server is running for ");
+  // A bit of dynamic data: Show the uptime
+  res->print((int)(millis()/1000), DEC);
+  res->println(" seconds.</p>");
+  res->println("</body>");
+  res->println("</html>");
 }
 
-void handle_NotFound(AsyncWebServerRequest *request)
-{
-    request->send(404, "text/plain", "Not found");
-}
+void handle404(HTTPRequest * req, HTTPResponse * res) {
+  // Discard request body, if we received any
+  // We do this, as this is the default node and may also server POST/PUT requests
+  req->discardRequestBody();
 
-void handle_relay1On(AsyncWebServerRequest *request)
-{
-    relay1.handle_on(request);
-}
+  // Set the response status
+  res->setStatusCode(404);
+  res->setStatusText("Not Found");
 
-void handle_relay2On(AsyncWebServerRequest *request)
-{
-    relay2.handle_on(request);
-}
+  // Set content type of the response
+  res->setHeader("Content-Type", "text/html");
 
-void handle_relay3On(AsyncWebServerRequest *request)
-{
-    relay3.handle_on(request);
-}
-
-void handle_relay4On(AsyncWebServerRequest *request)
-{
-    relay4.handle_on(request);
-}
-
-void handle_relay1Off(AsyncWebServerRequest *request)
-{
-    relay1.handle_off(request);
-}
-
-void handle_relay2Off(AsyncWebServerRequest *request)
-{
-    relay2.handle_off(request);
-}
-
-void handle_relay3Off(AsyncWebServerRequest *request)
-{
-    relay3.handle_off(request);
-}
-
-void handle_relay4Off(AsyncWebServerRequest *request)
-{
-    relay4.handle_off(request);
+  // Write a tiny HTTP page
+  res->println("<!DOCTYPE html>");
+  res->println("<html>");
+  res->println("<head><title>Not Found</title></head>");
+  res->println("<body><h1>404 Not Found</h1><p>The requested resource was not found on this server.</p></body>");
+  res->println("</html>");
 }
 
 String generateHtml()

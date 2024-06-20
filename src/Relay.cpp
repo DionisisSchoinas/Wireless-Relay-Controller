@@ -64,14 +64,14 @@ String Relay::getHtml() {
   return html;
 };
 
-void Relay::handle_on(AsyncWebServerRequest *request)
-{
-  setToOn(true);
-  request->send(200, "application/json", "{\"status\":\"OK\"}");
-}
+// void Relay::handle_on(AsyncWebServerRequest *request)
+// {
+//   setToOn(true);
+//   request->send(200, "application/json", "{\"status\":\"OK\"}");
+// }
 
-void Relay::handle_off(AsyncWebServerRequest *request)
-{
-  setToOn(false);
-  request->send(200, "application/json", "{\"status\":\"OK\"}");
-}
+// void Relay::handle_off(AsyncWebServerRequest *request)
+// {
+//   setToOn(false);
+//   request->send(200, "application/json", "{\"status\":\"OK\"}");
+// }
