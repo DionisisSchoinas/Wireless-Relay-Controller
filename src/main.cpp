@@ -1,16 +1,19 @@
 #include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
 #include <Relay.h>
+// Includes for the server
+#include <HTTPSServer.hpp>
+#include <SSLCert.hpp>
+#include <HTTPRequest.hpp>
+#include <HTTPResponse.hpp>
 
-// void handle_relay1On(AsyncWebServerRequest *request);
-// void handle_relay2On(AsyncWebServerRequest *request);
-// void handle_relay3On(AsyncWebServerRequest *request);
-// void handle_relay4On(AsyncWebServerRequest *request);
-// void handle_relay1Off(AsyncWebServerRequest *request);
-// void handle_relay2Off(AsyncWebServerRequest *request);
-// void handle_relay3Off(AsyncWebServerRequest *request);
-// void handle_relay4Off(AsyncWebServerRequest *request);
-// void handle_OnConnect(AsyncWebServerRequest *request);
-// void handle_NotFound(AsyncWebServerRequest *request);
+// Include certificate data
+// use lib/generateCa.sh to generate
+#include "cert.h"
+#include "private_key.h"
+
+// The HTTPS Server comes in a separate namespace. For easier use, include it here.
+using namespace httpsserver;
+
 String generateHtml();
 
 static Relay relay1(1, 1);
@@ -20,20 +23,6 @@ static Relay relay4(4, 4);
 
 const char *ap_password = "Pa3s#Tz!a";
 const char *device_hostname = "relays";
-
-// Include certificate data
-// use lib/generateCa.sh to generate
-#include "cert.h"
-#include "private_key.h"
-
-// Includes for the server
-#include <HTTPSServer.hpp>
-#include <SSLCert.hpp>
-#include <HTTPRequest.hpp>
-#include <HTTPResponse.hpp>
-
-// The HTTPS Server comes in a separate namespace. For easier use, include it here.
-using namespace httpsserver;
 
 // MyAsyncWebServer server(80);
 
@@ -80,17 +69,21 @@ void setup() {
         Serial.println("connected...yeey :)");
     }
 
-    // For every resource available on the server, we need to create a ResourceNode
-    // The ResourceNode links URL and HTTP method to a handler function
-    ResourceNode * nodeRoot    = new ResourceNode("/", "GET", &handleRoot);
-    ResourceNode * node404     = new ResourceNode("", "GET", &handle404);
-
-    // Add the root node to the server
-    secureServer.registerNode(nodeRoot);
 
     // Add the 404 not found node to the server.
     // The path is ignored for the default node.
-    secureServer.setDefaultNode(node404);
+    secureServer.setDefaultNode(new ResourceNode("", "GET", &handle404));
+    // Add the root node to the server
+    secureServer.registerNode(new ResourceNode("/", "GET", &handleRoot));
+    // Relays
+    secureServer.registerNode(new ResourceNode("/relay1on", "GET", [](HTTPRequest * req, HTTPResponse * res) { relay1.handleOn(req, res); }));
+    secureServer.registerNode(new ResourceNode("/relay2on", "GET", [](HTTPRequest * req, HTTPResponse * res) { relay2.handleOn(req, res); }));
+    secureServer.registerNode(new ResourceNode("/relay3on", "GET", [](HTTPRequest * req, HTTPResponse * res) { relay3.handleOn(req, res); }));
+    secureServer.registerNode(new ResourceNode("/relay4on", "GET", [](HTTPRequest * req, HTTPResponse * res) { relay4.handleOn(req, res); }));
+    secureServer.registerNode(new ResourceNode("/relay1off", "GET", [](HTTPRequest * req, HTTPResponse * res) { relay1.handleOff(req, res); }));
+    secureServer.registerNode(new ResourceNode("/relay2off", "GET", [](HTTPRequest * req, HTTPResponse * res) { relay2.handleOff(req, res); }));
+    secureServer.registerNode(new ResourceNode("/relay3off", "GET", [](HTTPRequest * req, HTTPResponse * res) { relay3.handleOff(req, res); }));
+    secureServer.registerNode(new ResourceNode("/relay4off", "GET", [](HTTPRequest * req, HTTPResponse * res) { relay4.handleOff(req, res); }));
 
     Serial.println("Starting server...");
     secureServer.start();
@@ -108,69 +101,36 @@ void loop() {
 }
 
 void handleRoot(HTTPRequest * req, HTTPResponse * res) {
-  // Status code is 200 OK by default.
-  // We want to deliver a simple HTML page, so we send a corresponding content type:
-  res->setHeader("Content-Type", "text/html");
+    res->setStatusCode(200);
+    res->setHeader("Content-Type", "text/html");
 
-  // The response implements the Print interface, so you can use it just like
-  // you would write to Serial etc.
-  res->println("<!DOCTYPE html>");
-  res->println("<html>");
-  res->println("<head><title>Hello World!</title></head>");
-  res->println("<body>");
-  res->println("<h1>Hello World!</h1>");
-  res->print("<p>Your server is running for ");
-  // A bit of dynamic data: Show the uptime
-  res->print((int)(millis()/1000), DEC);
-  res->println(" seconds.</p>");
-  res->println("</body>");
-  res->println("</html>");
-}
-
-void handle404(HTTPRequest * req, HTTPResponse * res) {
-  // Discard request body, if we received any
-  // We do this, as this is the default node and may also server POST/PUT requests
-  req->discardRequestBody();
-
-  // Set the response status
-  res->setStatusCode(404);
-  res->setStatusText("Not Found");
-
-  // Set content type of the response
-  res->setHeader("Content-Type", "text/html");
-
-  // Write a tiny HTTP page
-  res->println("<!DOCTYPE html>");
-  res->println("<html>");
-  res->println("<head><title>Not Found</title></head>");
-  res->println("<body><h1>404 Not Found</h1><p>The requested resource was not found on this server.</p></body>");
-  res->println("</html>");
-}
-
-String generateHtml()
-{
-    String ptr = "<!DOCTYPE html> <html>\n";
-    ptr += "<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n";
-    ptr += "<title>Relay Controller</title>\n";
-    ptr += "<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}\n";
-    ptr += "body{margin-top: 50px;} h1 {color: #444444;margin: 50px auto 30px;} h3 {color: #444444;margin-bottom: 50px;}\n";
-    ptr += ".button {display: block;background-color: #3498db;border: none;color: white;padding: 13px 30px;text-decoration: none;font-size: 25px;margin: 0px auto 35px;cursor: pointer;border-radius: 4px;}\n";
-    ptr += ".button-on {background-color: #3498db;}\n";
-    ptr += ".button-on:active {background-color: #2980b9;}\n";
-    ptr += ".button-off {background-color: #34495e;}\n";
-    ptr += ".button-off:active {background-color: #2c3e50;}\n";
-    ptr += "p {font-size: 18px;color: #313131;margin-bottom: 10px;}\n";
-    ptr += "</style>\n";
-    ptr += "</head>\n";
-    ptr += "<body>\n";
-    ptr += "<h1>ESP32 Relay Controller</h1>\n";
-
-    ptr += relay1.getHtml();
-    ptr += relay2.getHtml();
-    ptr += relay3.getHtml();
-    ptr += relay4.getHtml();
+    res->println("<!DOCTYPE html> <html>");
+    res->println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">");
+    res->println("<title>Relay Controller</title>");
+    res->println("<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}");
+    res->println("body{margin-top: 50px;} h1 {color: #444444;margin: 50px auto 30px;} h3 {color: #444444;margin-bottom: 50px;}");
+    res->println(".button {display: block;background-color: #3498db;border: none;color: white;padding: 13px 30px;text-decoration: none;font-size: 25px;margin: 0px auto 35px;cursor: pointer;border-radius: 4px;}");
+    res->println(".button-on {background-color: #3498db;}");
+    res->println(".button-on:hover {background-color: #2980b9;}");
+    res->println(".button-on:disabled {background-color: #77b3db;}");
+    res->println(".button-off {background-color: #34495e;}");
+    res->println(".button-off:hover {background-color: #2c3e50;}");
+    res->println(".button-off:disabled {background-color: #889199;}");
+    res->println("p {font-size: 18px;color: #313131;margin-bottom: 10px;}");
+    res->println("</style>");
+    res->println("</head>");
+    res->println("<body>");
     
-    ptr += "<script>function sendGet(num, status) {const xhttp = new XMLHttpRequest();xhttp.onload = function() {location.reload();};xhttp.open(\"GET\", \"http://relays/relay\" + num + status);xhttp.send();}</script>";
+    res->print("<p>Your server is running for<br><b>");
+    res->print((int)(millis()/60000), DEC);
+    res->println("</b><br>minutes.</p>");
+
+    res->println(relay1.getHtml());
+    res->println(relay2.getHtml());
+    res->println(relay3.getHtml());
+    res->println(relay4.getHtml());
+    
+    res->println("<script>function sendGet(num, status) {const xhttp = new XMLHttpRequest();xhttp.onload = function() {location.reload();};xhttp.open(\"GET\", \"https://relays/relay\" + num + status);xhttp.send();}</script>");
     /*
     <script>
     function sendGet(num, status) {
@@ -178,13 +138,32 @@ String generateHtml()
         xhttp.onload = function() {
             location.reload();
         };
-        xhttp.open("GET", "http://relays/relay" + num + status);
+        xhttp.open("GET", "https://relays/relay" + num + status);
         xhttp.send();
     }
     </script>
     */
 
-    ptr += "</body>\n";
-    ptr += "</html>\n";
-    return ptr;
+    res->println("</body>");
+    res->println("</html>");
+}
+
+void handle404(HTTPRequest * req, HTTPResponse * res) {
+    // Discard request body, if we received any
+    // We do this, as this is the default node and may also server POST/PUT requests
+    req->discardRequestBody();
+
+    // Set the response status
+    res->setStatusCode(404);
+    res->setStatusText("Not Found");
+
+    // Set content type of the response
+    res->setHeader("Content-Type", "text/html");
+
+    // Write a tiny HTTP page
+    res->println("<!DOCTYPE html>");
+    res->println("<html>");
+    res->println("<head><title>Not Found</title></head>");
+    res->println("<body><h1>404 Not Found</h1><p>The requested resource was not found on this server.</p></body>");
+    res->println("</html>");
 }
