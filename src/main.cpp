@@ -1,5 +1,8 @@
 #include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
 #include <Relay.h>
+#include <EEPROM.h>
+#include <esp_task_wdt.h>
+
 // Includes for the server
 #include <HTTPSServer.hpp>
 #include <SSLCert.hpp>
@@ -14,35 +17,319 @@
 // The HTTPS Server comes in a separate namespace. For easier use, include it here.
 using namespace httpsserver;
 
-String generateHtml();
+#define RELAY_NAME_SIZE 25  // Number of total characters (size of the char array) that can be saved in the config
+#define MAIN_POWER_PIN A4
+#define RELAY1_PIN 5
+#define RELAY2_PIN 6
+#define RELAY3_PIN 7
+#define RELAY4_PIN 8
 
-static Relay relay1(1, 1);
-static Relay relay2(2, 2);
-static Relay relay3(3, 3);
-static Relay relay4(4, 4);
+String generateHtml();
+static Relay relay1(RELAY1_PIN, 1);
+static Relay relay2(RELAY2_PIN, 2);
+static Relay relay3(RELAY3_PIN, 3);
+static Relay relay4(RELAY4_PIN, 4);
 
 const char *ap_password = "Pa3s#Tz!a";
 const char *device_hostname = "relays";
 
-// MyAsyncWebServer server(80);
-
 // Create an SSL certificate object from the files included above
 SSLCert cert = SSLCert(
-  myCert_crt_DER, myCert_crt_DER_len,
-  myCert_key_DER, myCert_key_DER_len
+    myCert_crt_DER, myCert_crt_DER_len,
+    myCert_key_DER, myCert_key_DER_len
 );
 
 // Create an SSL-enabled server that uses the certificate
-// The contstructor takes some more parameters, but we go for default values here.
 HTTPSServer secureServer = HTTPSServer(&cert);
 
-// Declare some handler functions for the various URLs on the server
-// The signature is always the same for those functions. They get two parameters,
-// which are pointers to the request data (read request body, headers, ...) and
-// to the response data (write response, set status code, ...)
-void handleRoot(HTTPRequest * req, HTTPResponse * res);
-void handleFavicon(HTTPRequest * req, HTTPResponse * res);
-void handle404(HTTPRequest * req, HTTPResponse * res);
+
+/*
+*
+*   Config related functions
+*
+*/
+static const int CONFIG_EEPROM_ADDR = 0;
+
+// configuration, as stored in EEPROM
+struct Config {
+    char relay1_name[RELAY_NAME_SIZE];
+    char relay2_name[RELAY_NAME_SIZE];
+    char relay3_name[RELAY_NAME_SIZE];
+    char relay4_name[RELAY_NAME_SIZE];
+    byte valid; // keep this as last byte
+} config;
+
+static void adjustConfigToDefaults() {
+    strcpy(config.relay1_name, RELAY_DEFAULT_NAME);
+    strcpy(config.relay2_name, RELAY_DEFAULT_NAME);
+    strcpy(config.relay3_name, RELAY_DEFAULT_NAME);
+    strcpy(config.relay4_name, RELAY_DEFAULT_NAME);
+    // Always needed
+    config.valid = 253;
+}
+
+static void loadFromEEPROM() {
+    EEPROM.get(CONFIG_EEPROM_ADDR, config);
+
+    if (config.valid != 253)
+        adjustConfigToDefaults();
+}
+
+static void loadConfig() {
+    loadFromEEPROM();
+
+    // Update objects with new config
+    relay1.setName(config.relay1_name);
+    relay2.setName(config.relay2_name);
+    relay3.setName(config.relay3_name);
+    relay4.setName(config.relay4_name);
+}
+
+static bool isConfigValid() {
+    if (strlen(config.relay1_name) > RELAY_NAME_SIZE)
+        return false;
+    if (strlen(config.relay2_name) > RELAY_NAME_SIZE)
+        return false;
+    if (strlen(config.relay3_name) > RELAY_NAME_SIZE)
+        return false;
+    if (strlen(config.relay4_name) > RELAY_NAME_SIZE)
+        return false;
+
+    return true;
+}
+
+// Returns true if successfully saved, otherwise returns false
+static bool saveConfig() {
+    if (!isConfigValid())
+        return false;
+    EEPROM.put(CONFIG_EEPROM_ADDR, config);
+    EEPROM.commit();
+    return true;
+}
+
+static bool saveConfigAndWasSaveSuccessful() {
+    if (saveConfig()) {
+        // re-init config
+        loadConfig();
+        return true;
+    }
+    // In case of problems get the values from EEPROM
+    loadFromEEPROM();
+    return false;
+}
+
+
+/*
+*
+*   HTTP request handler related functions
+*
+*/
+void addRelayConfigHtml(Relay * relay, HTTPResponse * res) {
+    res->println("<p>");
+    res->print("Relay ");
+    res->print(relay->getUrlNum());
+    res->print(": ");
+    res->print("<input id=\"relayInput");
+    res->print(relay->getUrlNum());
+    res->print("\" ");
+    res->print("value=\"");
+    res->print(relay->getName());
+    res->println("\"/>");
+    res->println("</p>");
+}
+
+void handleRoot(HTTPRequest * req, HTTPResponse * res) {
+    res->setStatusCode(200);
+    res->setHeader("Content-Type", "text/html");
+
+    res->println("<!DOCTYPE html> <html>");
+    res->println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">");
+    res->println("<title>Relay Controller</title>");
+    res->println("<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}");
+    res->println("body{margin-top: 50px;} h1 {color: #444444;margin: 50px auto 30px;} h3 {color: #444444;margin-bottom: 50px;}");
+    res->println(".button {display: block;border: none;color: white;padding: 13px 30px;text-decoration: none;font-size: 25px;margin: 0px auto 35px;cursor: pointer;border-radius: 4px;}");
+    res->println(".button-small {display: block;border: none;color: white;padding: 10px 25px;text-decoration: none;font-size: 15px;margin: 0px auto 30px;cursor: pointer;border-radius: 3px;}");
+    res->println(".button-on {background-color: #3498db;}");
+    res->println(".button-on:hover {background-color: #2980b9;}");
+    res->println(".button-on:disabled {background-color: #77b3db;}");
+    res->println(".button-off {background-color: #34495e;}");
+    res->println(".button-off:hover {background-color: #2c3e50;}");
+    res->println(".button-off:disabled {background-color: #889199;}");
+    res->println("p {font-size: 18px;color: #313131;margin-bottom: 10px;}");
+    res->println("</style>");
+    res->println("</head>");
+    res->println("<body>");
+    
+    res->print("<p>Your server has been running for<br><b style=\"font-size: 25px;\">");
+    res->print((int)(millis()/60000), DEC);
+    res->println("</b><br>minutes.</p>");
+
+    res->println("<table style=\"width: 50%;margin-left: 25%;\">");
+    res->println("<tr>");
+    res->println("<td>");
+    res->println(relay1.getHtml());
+    res->println("</td>");
+    res->println("<td>");
+    res->println(relay2.getHtml());
+    res->println("</td>");
+    res->println("</tr>");
+    res->println("<tr>");
+    res->println("<td>");
+    res->println(relay3.getHtml());
+    res->println("</td>");
+    res->println("<td>");
+    res->println(relay4.getHtml());
+    res->println("</td>");
+    res->println("</tr>");
+    res->println("</table>");
+    
+    res->println("<div>");
+    res->println("<h1>Configurations</h1>");
+    addRelayConfigHtml(&relay1, res);
+    addRelayConfigHtml(&relay2, res);
+    addRelayConfigHtml(&relay3, res);
+    addRelayConfigHtml(&relay4, res);
+    res->println("<button class=\"button button-on\" onclick=\"sendSave();this.disabled=true;\">Save Config</button>");
+    res->println("<button class=\"button-small button-off\" onclick=\"sendReset();this.disabled=true;\">Reset Config</button>");
+    res->println("</div>");
+    
+    res->println("<script>function sendGet(num, status) {const xhttp = new XMLHttpRequest();xhttp.onload = function() {location.reload();};xhttp.open(\"GET\", \"https://relays/relay\" + num + status);xhttp.send();}</script>");
+    /*
+    <script>
+        function sendGet(num, status) {
+            const xhttp = new XMLHttpRequest();
+            xhttp.onload = function() {
+                location.reload();
+            };
+            xhttp.open("GET", "https://relays/relay" + num + status);
+            xhttp.send();
+        }
+    </script>
+    */
+
+    res->println("<script>function sendSave() {const xhttp = new XMLHttpRequest();xhttp.onload = function() {location.reload();};var url = \"https://relays/config?\";url += \"r1=\" + document.getElementById(\"relayInput1\").value + \"&\";url += \"r2=\" + document.getElementById(\"relayInput2\").value + \"&\";url += \"r3=\" + document.getElementById(\"relayInput3\").value + \"&\";url += \"r4=\" + document.getElementById(\"relayInput4\").value;xhttp.open(\"GET\", url);xhttp.send();}</script>");
+    /*
+    <script>
+        function sendSave() {
+            const xhttp = new XMLHttpRequest();
+            xhttp.onload = function() {
+                location.reload();
+            };
+            var url = "https://relays/config?";
+            url += "r1=" + document.getElementById("relayInput1").value + "&";
+            url += "r2=" + document.getElementById("relayInput2").value + "&";
+            url += "r3=" + document.getElementById("relayInput3").value + "&";
+            url += "r4=" + document.getElementById("relayInput4").value;
+            xhttp.open("GET", url);
+            xhttp.send();
+        }
+    </script>
+    */
+
+    res->println("<script>function sendReset() {const xhttp = new XMLHttpRequest();xhttp.onload = function() {location.reload();};xhttp.open(\"GET\", \"https://relays/config/reset\");xhttp.send();}</script>");
+    /*
+    <script>
+        function sendReset() {
+            const xhttp = new XMLHttpRequest();
+            xhttp.onload = function() {
+                location.reload();
+            };
+            xhttp.open("GET", "https://relays/config/reset");
+            xhttp.send();
+        }
+    </script>
+    */
+
+    res->println("</body>");
+    res->println("</html>");
+}
+
+void handle404(HTTPRequest * req, HTTPResponse * res) {
+    // Discard request body, if we received any
+    // We do this, as this is the default node and may also server POST/PUT requests
+    req->discardRequestBody();
+
+    // Set the response status
+    res->setStatusCode(404);
+    res->setStatusText("Not Found");
+
+    // Set content type of the response
+    res->setHeader("Content-Type", "text/html");
+
+    // Write a tiny HTTP page
+    res->println("<!DOCTYPE html>");
+    res->println("<html>");
+    res->println("<head><title>Not Found</title></head>");
+    res->println("<body><h1>404 Not Found</h1><p>The requested resource was not found on this server.</p></body>");
+    res->println("</html>");
+}
+
+void handleConfig(HTTPRequest * req, HTTPResponse * res) {
+    ResourceParameters *params = req->getParams();
+    for(auto it = params->beginQueryParameters(); it != params->endQueryParameters(); ++it) {
+        if ((*it).first == "r1") {
+            strcpy(config.relay1_name, (*it).second.c_str());
+        } else if ((*it).first == "r2") {
+            strcpy(config.relay2_name, (*it).second.c_str());
+        } else if ((*it).first == "r3") {
+            strcpy(config.relay3_name, (*it).second.c_str());
+        } else if ((*it).first == "r4") {
+            strcpy(config.relay4_name, (*it).second.c_str());
+        }
+    }
+
+    if (saveConfigAndWasSaveSuccessful()) {
+        res->setStatusCode(200);
+        res->setHeader("Content-Type", "application/json");
+        res->println("{\"status\":\"OK\"}");
+        return;
+    }
+
+    res->setStatusCode(500);
+    res->setHeader("Content-Type", "application/json");
+    res->println("{\"status\":\"NOT_SAVED\"}");
+}
+
+void handleConfigReset(HTTPRequest * req, HTTPResponse * res) {
+    adjustConfigToDefaults();
+    if (saveConfigAndWasSaveSuccessful()) {
+        res->setStatusCode(200);
+        res->setHeader("Content-Type", "application/json");
+        res->println("{\"status\":\"OK\"}");
+        return;
+    }
+
+    res->setStatusCode(500);
+    res->setHeader("Content-Type", "application/json");
+    res->println("{\"status\":\"NOT_SAVED\"}");
+}
+
+
+/*
+*
+*   Main power related functions
+*
+*/
+static unsigned long lastMainPowerUpdate;
+static bool mainPowerLastStatus;
+static bool mainPowerOn;
+void readMainPower() {
+    mainPowerOn = analogRead(MAIN_POWER_PIN) > 300 ? true : false;
+}
+
+
+/*
+*
+*   Main arduino related functions
+*
+*/
+#define WDT_TIMEOUT 10
+
+void setupConfig() {
+    loadConfig();
+    lastMainPowerUpdate = 0;
+    mainPowerLastStatus = mainPowerOn;
+}
 
 void setup() {
     // put your setup code here, to run once:
@@ -75,6 +362,9 @@ void setup() {
     secureServer.setDefaultNode(new ResourceNode("", "GET", &handle404));
     // Add the root node to the server
     secureServer.registerNode(new ResourceNode("/", "GET", &handleRoot));
+    // Config
+    secureServer.registerNode(new ResourceNode("/config", "GET", &handleConfig));
+    secureServer.registerNode(new ResourceNode("/config/reset", "GET", &handleConfigReset));
     // Relays
     secureServer.registerNode(new ResourceNode("/relay1on", "GET", [](HTTPRequest * req, HTTPResponse * res) { relay1.handleOn(req, res); }));
     secureServer.registerNode(new ResourceNode("/relay2on", "GET", [](HTTPRequest * req, HTTPResponse * res) { relay2.handleOn(req, res); }));
@@ -90,80 +380,20 @@ void setup() {
     if (secureServer.isRunning()) {
         Serial.println("Server ready.");
     }
+
+    setupConfig();
+    
+    pinMode(MAIN_POWER_PIN, INPUT);    
+
+    esp_task_wdt_init(WDT_TIMEOUT, true); //enable panic so ESP32 restarts
+    esp_task_wdt_add(NULL); //add current thread to WDT watch
 }
 
 void loop() {
-  // This call will let the server do its work
-  secureServer.loop();
+    // This call will let the server do its work
+    secureServer.loop();
 
-  // Other code would go here...
-  delay(1);
-}
-
-void handleRoot(HTTPRequest * req, HTTPResponse * res) {
-    res->setStatusCode(200);
-    res->setHeader("Content-Type", "text/html");
-
-    res->println("<!DOCTYPE html> <html>");
-    res->println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">");
-    res->println("<title>Relay Controller</title>");
-    res->println("<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}");
-    res->println("body{margin-top: 50px;} h1 {color: #444444;margin: 50px auto 30px;} h3 {color: #444444;margin-bottom: 50px;}");
-    res->println(".button {display: block;background-color: #3498db;border: none;color: white;padding: 13px 30px;text-decoration: none;font-size: 25px;margin: 0px auto 35px;cursor: pointer;border-radius: 4px;}");
-    res->println(".button-on {background-color: #3498db;}");
-    res->println(".button-on:hover {background-color: #2980b9;}");
-    res->println(".button-on:disabled {background-color: #77b3db;}");
-    res->println(".button-off {background-color: #34495e;}");
-    res->println(".button-off:hover {background-color: #2c3e50;}");
-    res->println(".button-off:disabled {background-color: #889199;}");
-    res->println("p {font-size: 18px;color: #313131;margin-bottom: 10px;}");
-    res->println("</style>");
-    res->println("</head>");
-    res->println("<body>");
+    readMainPower();
     
-    res->print("<p>Your server is running for<br><b>");
-    res->print((int)(millis()/60000), DEC);
-    res->println("</b><br>minutes.</p>");
-
-    res->println(relay1.getHtml());
-    res->println(relay2.getHtml());
-    res->println(relay3.getHtml());
-    res->println(relay4.getHtml());
-    
-    res->println("<script>function sendGet(num, status) {const xhttp = new XMLHttpRequest();xhttp.onload = function() {location.reload();};xhttp.open(\"GET\", \"https://relays/relay\" + num + status);xhttp.send();}</script>");
-    /*
-    <script>
-    function sendGet(num, status) {
-        const xhttp = new XMLHttpRequest();
-        xhttp.onload = function() {
-            location.reload();
-        };
-        xhttp.open("GET", "https://relays/relay" + num + status);
-        xhttp.send();
-    }
-    </script>
-    */
-
-    res->println("</body>");
-    res->println("</html>");
-}
-
-void handle404(HTTPRequest * req, HTTPResponse * res) {
-    // Discard request body, if we received any
-    // We do this, as this is the default node and may also server POST/PUT requests
-    req->discardRequestBody();
-
-    // Set the response status
-    res->setStatusCode(404);
-    res->setStatusText("Not Found");
-
-    // Set content type of the response
-    res->setHeader("Content-Type", "text/html");
-
-    // Write a tiny HTTP page
-    res->println("<!DOCTYPE html>");
-    res->println("<html>");
-    res->println("<head><title>Not Found</title></head>");
-    res->println("<body><h1>404 Not Found</h1><p>The requested resource was not found on this server.</p></body>");
-    res->println("</html>");
+    esp_task_wdt_reset();
 }

@@ -7,7 +7,7 @@ namespace httpsserver {
     // pinMode(relayPin, OUTPUT);
     setToOn(false);
     this-> urlNum = urlNum;
-    this-> name = "N/A";
+    this-> name = RELAY_DEFAULT_NAME;
   }
 
   void Relay::setPinState(int state) {
@@ -63,10 +63,9 @@ namespace httpsserver {
     html += isOn() ? "Turn OFF" : "Turn ON";
     html += "</button>";
     return html;
-  };
+  }
 
-  void Relay::handleOn(HTTPRequest * req, HTTPResponse * res)
-  {
+  void Relay::handleOn(HTTPRequest * req, HTTPResponse * res) {
     setToOn(true);
 
     res->setStatusCode(200);
@@ -74,8 +73,7 @@ namespace httpsserver {
     res->println("{\"status\":\"OK\"}");
   }
 
-  void Relay::handleOff(HTTPRequest * req, HTTPResponse * res)
-  {
+  void Relay::handleOff(HTTPRequest * req, HTTPResponse * res) {
     setToOn(false);
     
     res->setStatusCode(200);

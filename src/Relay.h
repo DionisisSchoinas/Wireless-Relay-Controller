@@ -3,6 +3,8 @@
 #include "HTTPResponse.hpp"
 
 namespace httpsserver {
+  #define RELAY_DEFAULT_NAME "N/A"
+  
   class Relay {
     private:
       uint relayPin;
