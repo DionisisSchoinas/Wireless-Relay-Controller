@@ -18,11 +18,15 @@
 using namespace httpsserver;
 
 #define RELAY_NAME_SIZE 25  // Number of total characters (size of the char array) that can be saved in the config
-#define MAIN_POWER_PIN A4
-#define RELAY1_PIN 5
-#define RELAY2_PIN 6
-#define RELAY3_PIN 7
-#define RELAY4_PIN 8
+#define MAIN_POWER_PIN A3
+#define RELAY1_PIN 33
+#define RELAY2_PIN 25
+#define RELAY3_PIN 26
+#define RELAY4_PIN 27
+
+#define STARTUP_LED 23
+#define WIFI_CONNECTED_LED 22
+#define STARTED_LED 21
 
 String generateHtml();
 static Relay relay1(RELAY1_PIN, 1);
@@ -121,6 +125,26 @@ static bool saveConfigAndWasSaveSuccessful() {
 
 /*
 *
+*   Main power related functions
+*
+*/
+static unsigned long lastMainPowerUpdate;
+static bool mainPowerLastStatus;
+static bool mainPowerOn;
+void readMainPower() {
+    mainPowerOn = analogRead(MAIN_POWER_PIN) > 300 ? true : false;
+}
+
+void updateMainPowerLastStatus() {
+  if (mainPowerOn != mainPowerLastStatus && millis() >= lastMainPowerUpdate + 10000) {
+    mainPowerLastStatus = mainPowerOn;
+    lastMainPowerUpdate = millis();
+  }
+}
+
+
+/*
+*
 *   HTTP request handler related functions
 *
 */
@@ -157,12 +181,43 @@ void handleRoot(HTTPRequest * req, HTTPResponse * res) {
     res->println(".button-off:disabled {background-color: #889199;}");
     res->println("p {font-size: 18px;color: #313131;margin-bottom: 10px;}");
     res->println("</style>");
+    res->println("<style>");
+    res->println("#mainPowerTable {width: 50%; margin-left: 30%;}");
+    res->println("#mainPowerTable > tbody > tr > td > div {display: flex}");
+    res->println("#mainPowerTable > tbody > tr > td > div > p {margin-top: 4px}");
+    res->println("#mainPowerTable > tbody > tr > td > div > div {width: 30px;height: 30px;border-radius: 100px;margin-left: 10px;}");
+    res->println(".green {background-color: #20d220}");
+    res->println(".red {background-color: #ea0e0e}");
+    res->println("</style>");
     res->println("</head>");
     res->println("<body>");
     
     res->print("<p>Your server has been running for<br><b style=\"font-size: 25px;\">");
     res->print((int)(millis()/60000), DEC);
     res->println("</b><br>minutes.</p>");
+
+    res->println("<table id=\"mainPowerTable\">");
+    res->println("<tr>");
+    res->println("<td>");
+    res->println("<div>");
+    res->println("<p>Main Power: </p>");
+    res->print("<div class=\"");
+    res->print(mainPowerOn ? "green" : "red");
+    res->print("\">");
+    res->println("</div>");
+    res->println("</div>");
+    res->println("</td>");
+    res->println("<td>");
+    res->println("<div>");
+    res->println("<p>Last Main Power: </p>");
+    res->print("<div class=\"");
+    res->print(mainPowerLastStatus ? "green" : "red");
+    res->print("\">");
+    res->println("</div>");
+    res->println("</div>");
+    res->println("</td>");
+    res->println("</tr>");
+    res->println("</table>");
 
     res->println("<table style=\"width: 50%;margin-left: 25%;\">");
     res->println("<tr>");
@@ -184,7 +239,7 @@ void handleRoot(HTTPRequest * req, HTTPResponse * res) {
     res->println("</table>");
     
     res->println("<div>");
-    res->println("<h1>Configurations</h1>");
+    res->println("<h1 style=\"margin-top: 5px;\">Configurations</h1>");
     addRelayConfigHtml(&relay1, res);
     addRelayConfigHtml(&relay2, res);
     addRelayConfigHtml(&relay3, res);
@@ -307,31 +362,26 @@ void handleConfigReset(HTTPRequest * req, HTTPResponse * res) {
 
 /*
 *
-*   Main power related functions
-*
-*/
-static unsigned long lastMainPowerUpdate;
-static bool mainPowerLastStatus;
-static bool mainPowerOn;
-void readMainPower() {
-    mainPowerOn = analogRead(MAIN_POWER_PIN) > 300 ? true : false;
-}
-
-
-/*
-*
 *   Main arduino related functions
 *
 */
 #define WDT_TIMEOUT 10
 
 void setupConfig() {
+    EEPROM.begin(101);
     loadConfig();
     lastMainPowerUpdate = 0;
     mainPowerLastStatus = mainPowerOn;
 }
 
 void setup() {
+    pinMode(STARTUP_LED, OUTPUT);
+    pinMode(WIFI_CONNECTED_LED, OUTPUT);
+    pinMode(STARTED_LED, OUTPUT);
+    digitalWrite(STARTUP_LED, HIGH);
+    digitalWrite(WIFI_CONNECTED_LED, LOW);
+    digitalWrite(STARTED_LED, LOW);
+
     // put your setup code here, to run once:
     Serial.begin(9600);
 
@@ -355,7 +405,9 @@ void setup() {
         // if you get here you have connected to the WiFi
         Serial.println("connected...yeey :)");
     }
-
+    
+    digitalWrite(STARTUP_LED, LOW);
+    digitalWrite(WIFI_CONNECTED_LED, HIGH);
 
     // Add the 404 not found node to the server.
     // The path is ignored for the default node.
@@ -387,6 +439,9 @@ void setup() {
 
     esp_task_wdt_init(WDT_TIMEOUT, true); //enable panic so ESP32 restarts
     esp_task_wdt_add(NULL); //add current thread to WDT watch
+    
+    digitalWrite(WIFI_CONNECTED_LED, LOW);
+    digitalWrite(STARTED_LED, HIGH);
 }
 
 void loop() {
@@ -394,6 +449,7 @@ void loop() {
     secureServer.loop();
 
     readMainPower();
+    updateMainPowerLastStatus();
     
     esp_task_wdt_reset();
 }

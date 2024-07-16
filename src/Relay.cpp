@@ -4,14 +4,14 @@
 namespace httpsserver {
   Relay::Relay(int relayPin, int urlNum) {
     this-> relayPin = relayPin;
-    // pinMode(relayPin, OUTPUT);
+    pinMode(relayPin, OUTPUT);
     setToOn(false);
     this-> urlNum = urlNum;
     this-> name = RELAY_DEFAULT_NAME;
   }
 
   void Relay::setPinState(int state) {
-    // digitalWrite(relayPin, state);
+    digitalWrite(relayPin, state);
   }
 
   bool Relay::isOn() {
