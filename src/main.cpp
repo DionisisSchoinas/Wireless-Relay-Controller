@@ -19,14 +19,14 @@ using namespace httpsserver;
 
 #define RELAY_NAME_SIZE 25  // Number of total characters (size of the char array) that can be saved in the config
 #define MAIN_POWER_PIN A3
-#define RELAY1_PIN 33
-#define RELAY2_PIN 25
-#define RELAY3_PIN 26
-#define RELAY4_PIN 27
+#define RELAY1_PIN 39
+#define RELAY2_PIN 34
+#define RELAY3_PIN 35
+#define RELAY4_PIN 32
 
-#define STARTUP_LED 23
-#define WIFI_CONNECTED_LED 22
-#define STARTED_LED 21
+#define RED_LED 27
+#define GREEN_LED 14
+#define BLUE_LED 12
 
 String generateHtml();
 static Relay relay1(RELAY1_PIN, 1);
@@ -182,10 +182,10 @@ void handleRoot(HTTPRequest * req, HTTPResponse * res) {
     res->println("p {font-size: 18px;color: #313131;margin-bottom: 10px;}");
     res->println("</style>");
     res->println("<style>");
-    res->println("#mainPowerTable {width: 50%; margin-left: 30%;}");
-    res->println("#mainPowerTable > tbody > tr > td > div {display: flex}");
-    res->println("#mainPowerTable > tbody > tr > td > div > p {margin-top: 4px}");
-    res->println("#mainPowerTable > tbody > tr > td > div > div {width: 30px;height: 30px;border-radius: 100px;margin-left: 10px;}");
+    res->println(".mainPowerTable {margin-left: 50%}");
+    res->println(".mainPowerTable > tbody > tr > td > div {display: flex; margin-left: -50%}");
+    res->println(".mainPowerTable > tbody > tr > td > div > p {margin-top: 4px}");
+    res->println(".mainPowerTable > tbody > tr > td > div > div {width: 30px;height: 30px;border-radius: 100px;margin-left: 10px;}");
     res->println(".green {background-color: #20d220}");
     res->println(".red {background-color: #ea0e0e}");
     res->println("</style>");
@@ -196,7 +196,7 @@ void handleRoot(HTTPRequest * req, HTTPResponse * res) {
     res->print((int)(millis()/60000), DEC);
     res->println("</b><br>minutes.</p>");
 
-    res->println("<table id=\"mainPowerTable\">");
+    res->println("<table class=\"mainPowerTable\">");
     res->println("<tr>");
     res->println("<td>");
     res->println("<div>");
@@ -207,6 +207,10 @@ void handleRoot(HTTPRequest * req, HTTPResponse * res) {
     res->println("</div>");
     res->println("</div>");
     res->println("</td>");
+    res->println("</tr>");
+    res->println("</table>");
+    res->println("<table class=\"mainPowerTable\">");
+    res->println("<tr>");
     res->println("<td>");
     res->println("<div>");
     res->println("<p>Last Main Power: </p>");
@@ -367,6 +371,12 @@ void handleConfigReset(HTTPRequest * req, HTTPResponse * res) {
 */
 #define WDT_TIMEOUT 10
 
+void setColor(int red, int green, int blue) {
+    analogWrite(RED_LED, 255-red);
+    analogWrite(GREEN_LED, 255-green);
+    analogWrite(BLUE_LED, 255-blue);
+}
+
 void setupConfig() {
     EEPROM.begin(101);
     loadConfig();
@@ -375,12 +385,11 @@ void setupConfig() {
 }
 
 void setup() {
-    pinMode(STARTUP_LED, OUTPUT);
-    pinMode(WIFI_CONNECTED_LED, OUTPUT);
-    pinMode(STARTED_LED, OUTPUT);
-    digitalWrite(STARTUP_LED, HIGH);
-    digitalWrite(WIFI_CONNECTED_LED, LOW);
-    digitalWrite(STARTED_LED, LOW);
+    pinMode(RED_LED, OUTPUT);
+    pinMode(GREEN_LED, OUTPUT);
+    pinMode(BLUE_LED, OUTPUT);
+
+    setColor(255, 0, 0);
 
     // put your setup code here, to run once:
     Serial.begin(9600);
@@ -391,6 +400,8 @@ void setup() {
     WiFi.mode(WIFI_STA);
 
     Serial.println("Starting up...");
+    
+    setColor(255, 255, 0);
 
     bool res;
     res = wm.autoConnect(wm.getDefaultAPName().c_str(), ap_password); // password protected ap
@@ -406,8 +417,7 @@ void setup() {
         Serial.println("connected...yeey :)");
     }
     
-    digitalWrite(STARTUP_LED, LOW);
-    digitalWrite(WIFI_CONNECTED_LED, HIGH);
+    setColor(0, 255, 0);
 
     // Add the 404 not found node to the server.
     // The path is ignored for the default node.
@@ -440,8 +450,8 @@ void setup() {
     esp_task_wdt_init(WDT_TIMEOUT, true); //enable panic so ESP32 restarts
     esp_task_wdt_add(NULL); //add current thread to WDT watch
     
-    digitalWrite(WIFI_CONNECTED_LED, LOW);
-    digitalWrite(STARTED_LED, HIGH);
+    
+    setColor(0, 0, 255);
 }
 
 void loop() {
