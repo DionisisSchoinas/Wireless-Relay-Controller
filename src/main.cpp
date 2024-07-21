@@ -205,7 +205,7 @@ void handleRoot(HTTPRequest * req, HTTPResponse * res) {
     res->println("<td>");
     res->println("<div>");
     res->println("<p>Main Power: </p>");
-    res->print("<div class=\"");
+    res->print("<div id=\"mainPowerId\" class=\"");
     res->print(mainPowerOn ? "green" : "red");
     res->print("\">");
     res->println("</div>");
@@ -218,7 +218,7 @@ void handleRoot(HTTPRequest * req, HTTPResponse * res) {
     res->println("<td>");
     res->println("<div>");
     res->println("<p>Last Main Power: </p>");
-    res->print("<div class=\"");
+    res->print("<div id=\"lastMainPowerId\" class=\"");
     res->print(mainPowerLastStatus ? "green" : "red");
     res->print("\">");
     res->println("</div>");
@@ -227,20 +227,22 @@ void handleRoot(HTTPRequest * req, HTTPResponse * res) {
     res->println("</tr>");
     res->println("</table>");
 
+    res->println("<button id=\"refreshBtn\" class=\"button button-on\" style=\"padding: 7px 15px;margin: auto;\" onclick=\"getMain();this.disabled=true;\">&#10227;</button>");
+
     res->println("<table style=\"width: 50%;margin-left: 25%;\">");
     res->println("<tr>");
-    res->println("<td>");
+    res->println("<td id=\"data1\">");
     res->println(relay1.getHtml());
     res->println("</td>");
-    res->println("<td>");
+    res->println("<td id=\"data2\">");
     res->println(relay2.getHtml());
     res->println("</td>");
     res->println("</tr>");
     res->println("<tr>");
-    res->println("<td>");
+    res->println("<td id=\"data3\">");
     res->println(relay3.getHtml());
     res->println("</td>");
-    res->println("<td>");
+    res->println("<td id=\"data4\">");
     res->println(relay4.getHtml());
     res->println("</td>");
     res->println("</tr>");
@@ -256,13 +258,13 @@ void handleRoot(HTTPRequest * req, HTTPResponse * res) {
     res->println("<button class=\"button-small button-off\" onclick=\"sendReset();this.disabled=true;\">Reset Config</button>");
     res->println("</div>");
     
-    res->println("<script>function sendGet(num, status) {const xhttp = new XMLHttpRequest();xhttp.onload = function() {location.reload();};xhttp.open(\"GET\", \"https://relays/relay\" + num + status);xhttp.send();}</script>");
+    res->println("<script>function sendGet(num, status) {const xhttp = new XMLHttpRequest();xhttp.onload = function(res) {document.getElementById(\"data\" + num).innerHTML = res.target.response;};xhttp.open(\"GET\", \"https://relays/relay\" + num + status);xhttp.send();}</script>");
     /*
     <script>
         function sendGet(num, status) {
             const xhttp = new XMLHttpRequest();
-            xhttp.onload = function() {
-                location.reload();
+            xhttp.onload = function(res) {
+                document.getElementById("data" + num).innerHTML = res.target.response;
             };
             xhttp.open("GET", "https://relays/relay" + num + status);
             xhttp.send();
@@ -298,6 +300,31 @@ void handleRoot(HTTPRequest * req, HTTPResponse * res) {
                 location.reload();
             };
             xhttp.open("GET", "https://relays/config/reset");
+            xhttp.send();
+        }
+    </script>
+    */
+
+    res->println("<script>function getMain() {const xhttp = new XMLHttpRequest();xhttp.onload = function(res) {var jsonRes = JSON.parse(res.target.response);if (jsonRes.mainPowerOn == 1) {document.getElementById(\"mainPowerId\").classList.replace(\"red\", \"green\");} else {document.getElementById(\"mainPowerId\").classList.replace(\"green\", \"red\");}if (jsonRes.lastMainPowerOn == 1) {document.getElementById(\"lastMainPowerId\").classList.replace(\"red\", \"green\");} else {document.getElementById(\"lastMainPowerId\").classList.replace(\"green\", \"red\");}document.getElementById(\"refreshBtn\").disabled = false;};xhttp.open(\"GET\", \"https://relays/main-power\");xhttp.send();}</script>");
+    /*
+    <script>
+        function getMain() {
+            const xhttp = new XMLHttpRequest();
+            xhttp.onload = function(res) {
+                var jsonRes = JSON.parse(res.target.response);
+                if (jsonRes.mainPowerOn == 1) {
+                    document.getElementById("mainPowerId").classList.replace("red", "green");  
+                } else {
+                    document.getElementById("mainPowerId").classList.replace("green", "red"); 
+                }
+                if (jsonRes.lastMainPowerOn == 1) {
+                    document.getElementById("lastMainPowerId").classList.replace("red", "green");  
+                } else {
+                    document.getElementById("lastMainPowerId").classList.replace("green", "red");
+                }
+                document.getElementById("refreshBtn").disabled = false;
+            };
+            xhttp.open("GET", "https://relays/main-power");
             xhttp.send();
         }
     </script>

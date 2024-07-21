@@ -42,10 +42,10 @@ namespace httpsserver {
   String Relay::getHtml() {
     /* Generates something like this
       <p>
-        Relay Name 1 Status: ON
+        RelayName_1 Status: ON
       </p>
-      <button class=\"button button-off\" onclick="sendGet(1, 'off')">
-        OFF
+      <button class=\"button button-off\" onclick="sendGet(1, 'off');this.disabled=true;">
+        Turn OFF
       </button>
     */
 
@@ -69,15 +69,15 @@ namespace httpsserver {
     setToOn(true);
 
     res->setStatusCode(200);
-    res->setHeader("Content-Type", "application/json");
-    res->println("{\"status\":\"OK\"}");
+    res->setHeader("Content-Type", "application/text");
+    res->println(getHtml());
   }
 
   void Relay::handleOff(HTTPRequest * req, HTTPResponse * res) {
     setToOn(false);
     
     res->setStatusCode(200);
-    res->setHeader("Content-Type", "application/json");
-    res->println("{\"status\":\"OK\"}");
+    res->setHeader("Content-Type", "application/text");
+    res->println(getHtml());
   }
 }
