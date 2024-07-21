@@ -18,12 +18,12 @@
 using namespace httpsserver;
 
 #define RELAY_NAME_SIZE 25  // Number of total characters (size of the char array) that can be saved in the config
-#define MAIN_POWER_PIN A3
-#define RELAY1_PIN 39
-#define RELAY2_PIN 34
-#define RELAY3_PIN 35
-#define RELAY4_PIN 32
 
+#define MAIN_POWER_PIN 36
+#define RELAY1_PIN 26
+#define RELAY2_PIN 25
+#define RELAY3_PIN 33
+#define RELAY4_PIN 32
 #define RED_LED 27
 #define GREEN_LED 14
 #define BLUE_LED 12
@@ -142,6 +142,10 @@ void updateMainPowerLastStatus() {
   }
 }
 
+void checkMainPower() {
+    readMainPower();
+    updateMainPowerLastStatus();
+}
 
 /*
 *
@@ -363,6 +367,17 @@ void handleConfigReset(HTTPRequest * req, HTTPResponse * res) {
     res->println("{\"status\":\"NOT_SAVED\"}");
 }
 
+void handleMainPower(HTTPRequest * req, HTTPResponse * res) {
+    res->setStatusCode(200);
+    res->setHeader("Content-Type", "application/json");
+    res->println("{");
+    res->print("\"mainPowerOn\":");
+    res->print(mainPowerOn);
+    res->println(",");
+    res->print("\"lastMainPowerOn\":");
+    res->println(lastMainPowerUpdate);
+    res->println("}");
+}
 
 /*
 *
@@ -377,6 +392,13 @@ void setColor(int red, int green, int blue) {
     analogWrite(BLUE_LED, 255-blue);
 }
 
+void setupPins() {
+    pinMode(RED_LED, OUTPUT);
+    pinMode(GREEN_LED, OUTPUT);
+    pinMode(BLUE_LED, OUTPUT);    
+    pinMode(MAIN_POWER_PIN, INPUT);
+}
+
 void setupConfig() {
     EEPROM.begin(101);
     loadConfig();
@@ -385,9 +407,7 @@ void setupConfig() {
 }
 
 void setup() {
-    pinMode(RED_LED, OUTPUT);
-    pinMode(GREEN_LED, OUTPUT);
-    pinMode(BLUE_LED, OUTPUT);
+    setupPins();
 
     setColor(255, 0, 0);
 
@@ -436,6 +456,8 @@ void setup() {
     secureServer.registerNode(new ResourceNode("/relay2off", "GET", [](HTTPRequest * req, HTTPResponse * res) { relay2.handleOff(req, res); }));
     secureServer.registerNode(new ResourceNode("/relay3off", "GET", [](HTTPRequest * req, HTTPResponse * res) { relay3.handleOff(req, res); }));
     secureServer.registerNode(new ResourceNode("/relay4off", "GET", [](HTTPRequest * req, HTTPResponse * res) { relay4.handleOff(req, res); }));
+    // Main power json
+    secureServer.registerNode(new ResourceNode("/main-power", "GET", &handleMainPower));
 
     Serial.println("Starting server...");
     secureServer.start();
@@ -444,12 +466,9 @@ void setup() {
     }
 
     setupConfig();
-    
-    pinMode(MAIN_POWER_PIN, INPUT);    
 
     esp_task_wdt_init(WDT_TIMEOUT, true); //enable panic so ESP32 restarts
-    esp_task_wdt_add(NULL); //add current thread to WDT watch
-    
+    esp_task_wdt_add(NULL); //add current thread to WDT watch    
     
     setColor(0, 0, 255);
 }
@@ -458,8 +477,7 @@ void loop() {
     // This call will let the server do its work
     secureServer.loop();
 
-    readMainPower();
-    updateMainPowerLastStatus();
+    checkMainPower();
     
     esp_task_wdt_reset();
 }
