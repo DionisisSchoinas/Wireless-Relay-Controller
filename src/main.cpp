@@ -128,23 +128,13 @@ static bool saveConfigAndWasSaveSuccessful() {
 *   Main power related functions
 *
 */
-static unsigned long lastMainPowerUpdate;
-static bool mainPowerLastStatus;
 static bool mainPowerOn;
 void readMainPower() {
     mainPowerOn = analogRead(MAIN_POWER_PIN) > 300 ? true : false;
 }
 
-void updateMainPowerLastStatus() {
-  if (mainPowerOn != mainPowerLastStatus && millis() >= lastMainPowerUpdate + 10000) {
-    mainPowerLastStatus = mainPowerOn;
-    lastMainPowerUpdate = millis();
-  }
-}
-
 void checkMainPower() {
     readMainPower();
-    updateMainPowerLastStatus();
 }
 
 /*
@@ -207,19 +197,6 @@ void handleRoot(HTTPRequest * req, HTTPResponse * res) {
     res->println("<p>Main Power: </p>");
     res->print("<div id=\"mainPowerId\" class=\"");
     res->print(mainPowerOn ? "green" : "red");
-    res->print("\">");
-    res->println("</div>");
-    res->println("</div>");
-    res->println("</td>");
-    res->println("</tr>");
-    res->println("</table>");
-    res->println("<table class=\"mainPowerTable\">");
-    res->println("<tr>");
-    res->println("<td>");
-    res->println("<div>");
-    res->println("<p>Last Main Power: </p>");
-    res->print("<div id=\"lastMainPowerId\" class=\"");
-    res->print(mainPowerLastStatus ? "green" : "red");
     res->print("\">");
     res->println("</div>");
     res->println("</div>");
@@ -305,7 +282,7 @@ void handleRoot(HTTPRequest * req, HTTPResponse * res) {
     </script>
     */
 
-    res->println("<script>function getMain() {const xhttp = new XMLHttpRequest();xhttp.onload = function(res) {var jsonRes = JSON.parse(res.target.response);if (jsonRes.mainPowerOn == 1) {document.getElementById(\"mainPowerId\").classList.replace(\"red\", \"green\");} else {document.getElementById(\"mainPowerId\").classList.replace(\"green\", \"red\");}if (jsonRes.lastMainPowerOn == 1) {document.getElementById(\"lastMainPowerId\").classList.replace(\"red\", \"green\");} else {document.getElementById(\"lastMainPowerId\").classList.replace(\"green\", \"red\");}document.getElementById(\"refreshBtn\").disabled = false;};xhttp.open(\"GET\", \"https://relays/main-power\");xhttp.send();}</script>");
+    res->println("<script>function getMain() {const xhttp = new XMLHttpRequest();xhttp.onload = function(res) {var jsonRes = JSON.parse(res.target.response);if (jsonRes.mainPowerOn == 1) {document.getElementById(\"mainPowerId\").classList.replace(\"red\", \"green\");} else {document.getElementById(\"mainPowerId\").classList.replace(\"green\", \"red\");}document.getElementById(\"refreshBtn\").disabled = false;};xhttp.open(\"GET\", \"https://relays/main-power\");xhttp.send();}</script>");
     /*
     <script>
         function getMain() {
@@ -316,11 +293,6 @@ void handleRoot(HTTPRequest * req, HTTPResponse * res) {
                     document.getElementById("mainPowerId").classList.replace("red", "green");  
                 } else {
                     document.getElementById("mainPowerId").classList.replace("green", "red"); 
-                }
-                if (jsonRes.lastMainPowerOn == 1) {
-                    document.getElementById("lastMainPowerId").classList.replace("red", "green");  
-                } else {
-                    document.getElementById("lastMainPowerId").classList.replace("green", "red");
                 }
                 document.getElementById("refreshBtn").disabled = false;
             };
@@ -400,9 +372,6 @@ void handleMainPower(HTTPRequest * req, HTTPResponse * res) {
     res->println("{");
     res->print("\"mainPowerOn\":");
     res->print(mainPowerOn);
-    res->println(",");
-    res->print("\"lastMainPowerOn\":");
-    res->println(lastMainPowerUpdate);
     res->println("}");
 }
 
@@ -429,8 +398,6 @@ void setupPins() {
 void setupConfig() {
     EEPROM.begin(101);
     loadConfig();
-    lastMainPowerUpdate = 0;
-    mainPowerLastStatus = mainPowerOn;
 }
 
 void setup() {
