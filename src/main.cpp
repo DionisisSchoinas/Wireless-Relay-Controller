@@ -21,12 +21,12 @@ using namespace httpsserver;
 
 #define MAIN_POWER_PIN 36
 #define RELAY1_PIN 26
-#define RELAY2_PIN 25
+#define RELAY2_PIN 27
 #define RELAY3_PIN 33
-#define RELAY4_PIN 32
-#define RED_LED 27
-#define GREEN_LED 14
-#define BLUE_LED 12
+#define RELAY4_PIN 25
+#define RED_LED 14
+#define GREEN_LED 12
+#define BLUE_LED 13
 
 String generateHtml();
 static Relay relay1(RELAY1_PIN, 1);
@@ -403,6 +403,7 @@ void setupConfig() {
 void setup() {
     setupPins();
 
+    // Red
     setColor(255, 0, 0);
 
     // put your setup code here, to run once:
@@ -415,6 +416,7 @@ void setup() {
 
     Serial.println("Starting up...");
     
+    // Yellow
     setColor(255, 255, 0);
 
     bool res;
@@ -431,6 +433,7 @@ void setup() {
         Serial.println("connected...yeey :)");
     }
     
+    // Green
     setColor(0, 255, 0);
 
     // Add the 404 not found node to the server.
@@ -464,6 +467,7 @@ void setup() {
     esp_task_wdt_init(WDT_TIMEOUT, true); //enable panic so ESP32 restarts
     esp_task_wdt_add(NULL); //add current thread to WDT watch    
     
+    // Blue
     setColor(0, 0, 255);
 }
 
